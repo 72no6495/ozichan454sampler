@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Sampler & Sequencer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a1a;
+            color: #e5e5e5;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+        
+        .mode-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #4b5563;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header / Transport Controls -->
+    <header class="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between shadow-md z-10">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                <i class="fa-solid fa-music mr-2 text-blue-400"></i>WebSampler
+            </h1>
+            <div class="h-6 w-px bg-gray-600 mx-2"></div>
+            
+            <!-- Mode Switcher -->
+            <div class="flex bg-gray-700 rounded-lg p-1">
+                <button id="mode-edit" class="mode-btn active px-4 py-1.5 rounded-md text-sm font-medium transition-colors">
+                    <i class="fa-solid fa-sliders mr-2"></i>編集モード
+                </button>
+                <button id="mode-perform" class="mode-btn px-4 py-1.5 rounded-md text-sm font-medium transition-colors">
+                    <i class="fa-solid fa-layer-group mr-2"></i>演奏モード
+                </button>
+            </div>
+        </div>
+
+        <!-- Transport (Play/Stop/BPM) -->
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2 bg-gray-700 px-3 py-1.5 rounded-md">
+                <span class="text-xs text-gray-400 font-bold">BPM</span>
+                <input type="number" id="bpm-input" value="120" min="40" max="300" class="w-12 bg-transparent text-center focus:outline-none text-sm font-mono">
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button id="btn-play" class="w-10 h-10 rounded-full bg-green-600 hover:bg-green-500 text-white flex items-center justify-center transition-all shadow-lg hover:shadow-green-500/30">
+                    <i class="fa-solid fa-play"></i>
+                </button>
+                <button id="btn-stop" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center transition-all">
+                    <i class="fa-solid fa-stop"></i>
+                </button>
+            </div>
+            
+            <button id="btn-clear" class="text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded transition-colors">
+                <i class="fa-solid fa-trash mr-1"></i>All Clear
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Loading Overlay for Audio Context Start -->
+        <div id="start-overlay" class="absolute inset-0 bg-gray-900/90 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
+            <div class="text-center max-w-md p-6">
+                <h2 class="text-2xl font-bold mb-4">Web Samplerへようこそ</h2>
+                <p class="text-gray-400 mb-8">ブラウザの制限により、音声再生を開始するにはクリックが必要です。</p>
+                <button id="btn-start-audio" class="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-600/30 transition-all transform hover:scale-105">
+                    <i class="fa-solid fa-power-off mr-2"></i>システム起動
+                </button>
+            </div>
+        </div>
+
+        <!-- Edit Mode View -->
+        <div id="view-edit" class="w-full h-full flex flex-col md:flex-row p-4 gap-4 transition-all duration-300 overflow-y-auto md:overflow-hidden">
+            <!-- Sample List (Left Sidebar) -->
+            <div class="w-full md:w-64 h-48 md:h-auto flex-shrink-0 flex flex-col gap-2 bg-gray-800 rounded-xl p-3 border border-gray-700 overflow-y-auto">
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">Samples</h3>
+                <!-- Sample Slots Generated by JS -->
+                <div id="sample-slots-container" class="flex flex-col gap-2">
+                    <!-- Sample Item Template -->
+                    <!-- <div class="sample-slot p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 border-l-4 border-blue-500">
+                        <div class="font-medium truncate">Kick Drum.wav</div>
+                        <div class="text-xs text-gray-400">Slot 1</div>
+                    </div> -->
+                </div>
+                <button id="btn-add-sample" class="mt-2 py-2 border-2 border-dashed border-gray-600 text-gray-500 rounded-lg hover:border-gray-500 hover:text-gray-400 transition-colors text-sm flex items-center justify-center">
+                    <i class="fa-solid fa-plus mr-2"></i>スロット追加
+                </button>
+            </div>
+
+            <!-- Editor Area -->
+            <div class="flex-1 bg-gray-800 rounded-xl p-6 border border-gray-700 flex flex-col relative overflow-hidden">
+                <div id="empty-state" class="absolute inset-0 flex items-center justify-center text-gray-500 flex-col p-4 text-center">
+                    <i class="fa-solid fa-wave-square text-4xl mb-4 opacity-30"></i>
+                    <p class="mb-4">左側のスロットを選択するか、<br>新しいサンプルを追加してください</p>
+                    <button id="btn-load-empty" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg">
+                        <i class="fa-solid fa-upload mr-2"></i>ファイルを読み込む
+                    </button>
+                </div>
+
+                <div id="editor-controls" class="hidden h-full flex flex-col">
+                    <!-- Sample Info & Actions -->
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <h2 id="current-sample-name" class="text-2xl font-bold text-white mb-1">Kick Drum.wav</h2>
+                            <span class="text-xs px-2 py-1 bg-blue-900 text-blue-300 rounded" id="current-slot-badge">SLOT 1</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <label class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded cursor-pointer transition-colors text-sm">
+                                <i class="fa-solid fa-upload mr-2"></i>ファイル読込
+                                <input type="file" id="file-input" accept="audio/*" class="hidden">
+                            </label>
+                            <button id="btn-preview" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm">
+                                <i class="fa-solid fa-play mr-2"></i>試聴
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Waveform Visualizer -->
+                    <div class="h-48 bg-gray-900 rounded-lg border border-gray-700 mb-6 relative overflow-hidden group">
+                        <canvas id="waveform-canvas" class="w-full h-full"></canvas>
+                        <!-- Trim Handles (Visual Representation) -->
+                        <div id="trim-region" class="absolute top-0 bottom-0 bg-blue-500/20 border-x border-blue-400 pointer-events-none" style="left: 0%; right: 0%;"></div>
+                    </div>
+
+                    <!-- Parameters Grid -->
+                    <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 overflow-y-auto pb-4">
+                        <!-- Volume -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">Volume</label>
+                                <span id="val-volume" class="text-xs font-mono text-blue-400">0 dB</span>
+                            </div>
+                            <input type="range" id="param-volume" min="-60" max="6" value="0" step="0.5">
+                        </div>
+
+                        <!-- Playback Rate (Pitch/Speed) -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">Playback Rate</label>
+                                <span id="val-rate" class="text-xs font-mono text-blue-400">1.0x</span>
+                            </div>
+                            <input type="range" id="param-rate" min="0.1" max="4.0" value="1.0" step="0.1">
+                        </div>
+
+                        <!-- Trim Start -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">Start Offset</label>
+                                <span id="val-start" class="text-xs font-mono text-blue-400">0s</span>
+                            </div>
+                            <input type="range" id="param-start" min="0" max="1" value="0" step="0.01">
+                        </div>
+                        
+                        <!-- Trim End -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">End Point</label>
+                                <span id="val-end" class="text-xs font-mono text-blue-400">End</span>
+                            </div>
+                            <input type="range" id="param-end" min="0" max="1" value="1" step="0.01">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sequencer Mode View -->
+        <div id="view-perform" class="w-full h-full hidden p-4 flex-col gap-4">
+            
+            <!-- Toolbar -->
+            <div class="flex justify-between items-center bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <div class="flex gap-2 text-sm">
+                    <button id="add-track-btn" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-200">
+                        <i class="fa-solid fa-plus mr-1"></i>トラック追加
+                    </button>
+                    <div class="w-px h-6 bg-gray-600 mx-2"></div>
+                    <span class="text-gray-400 self-center">左クリック: ノート配置 / 右クリック: ノート削除</span>
+                </div>
+            </div>
+
+            <!-- Sequencer Grid Container -->
+            <div class="flex-1 bg-gray-800 rounded-xl border border-gray-700 overflow-hidden flex flex-col">
+                <!-- Timeline Header -->
+                <div class="h-8 bg-gray-900 border-b border-gray-700 flex">
+                    <div class="w-32 flex-shrink-0 border-r border-gray-700 bg-gray-800 z-10"></div> <!-- Track Names Header -->
+                    <div id="timeline-header" class="flex-1 flex overflow-hidden">
+                        <!-- Step Markers generated by JS -->
+                    </div>
+                </div>
+                
+                <!-- Tracks Area -->
+                <div id="sequencer-tracks" class="flex-1 overflow-y-auto overflow-x-hidden relative">
+                    <!-- Tracks generated by JS -->
+                    <div class="flex items-center justify-center h-full text-gray-500">
+                        <p>トラックがありません。編集モードでサンプルを追加してください。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- JS Scripts -->
+    <script src="js/audio-engine.js"></script>
+    <script src="js/sequencer.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
