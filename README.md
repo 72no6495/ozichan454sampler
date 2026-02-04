@@ -41,16 +41,6 @@
 - **Tone.js**: Web Audio APIラッパー（音声処理の中核）
 - **Vanilla JavaScript**: アプリケーションロジック
 
-## インストール・公開方法
-
-このリポジトリのファイル一式（`index.html`, `js/`, `css/`）をWebサーバーに配置するだけで動作します。ビルドプロセスは不要です。
-
-### GitHub Pagesでの公開手順
-1. このリポジトリをGitHubにプッシュ。
-2. リポジトリの `Settings` -> `Pages` に移動。
-3. `Branch` を `main` (または `master`) に設定し、Saveをクリック。
-4. 数分後、生成されたURLからアクセス可能になります。
-
 ## ライセンス
 
 MIT License
