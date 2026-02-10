@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Sampler & Sequencer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Global Styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a1a;
+            color: #e5e5e5;
+            user-select: none; /* Prevent text selection during interaction */
+            -webkit-user-select: none;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+        
+        .mode-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        /* Custom Scrollbar for the Tracks Area */
+        #sequencer-tracks::-webkit-scrollbar {
+            width: 10px;
+            background-color: #1f2937;
+        }
+
+        #sequencer-tracks::-webkit-scrollbar-thumb {
+            background-color: #4b5563;
+            border-radius: 5px;
+            border: 2px solid #1f2937;
+        }
+
+        #sequencer-tracks::-webkit-scrollbar-thumb:hover {
+            background-color: #6b7280;
+        }
+        
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        /* Slider Track */
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #374151; /* gray-700 */
+            border-radius: 3px;
+            transition: background 0.2s;
+        }
+        input[type=range]:hover::-webkit-slider-runnable-track {
+            background: #4b5563; /* gray-600 */
+        }
+
+        /* Slider Thumb */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6; /* blue-500 */
+            cursor: pointer;
+            margin-top: -5px; /* Centers thumb on the track */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: transform 0.1s, background 0.2s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            background: #60a5fa; /* blue-400 */
+            transform: scale(1.1);
+        }
+        input[type=range]::-webkit-slider-thumb:active {
+            background: #2563eb; /* blue-600 */
+            transform: scale(0.95);
+        }
+        
+        /* Firefox Styles for Range */
+        input[type=range]::-moz-range-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #374151;
+            border-radius: 3px;
+        }
+        input[type=range]::-moz-range-thumb {
+            height: 16px;
+            width: 16px;
+            border: none;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* Step Sequencer Grid Animation */
+        @keyframes flash {
+            0% { background-color: #3b82f6; } /* blue-500 */
+            100% { background-color: transparent; }
+        }
+
+        .step-flash {
+            animation: flash 0.1s ease-out;
+        }
+
+        /* Utility for missing Tailwind classes */
+        .bg-gray-750 {
+            background-color: #2d3748; /* Somewhere between 700 and 800 */
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header / Transport Controls -->
+    <header class="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between shadow-md z-10">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                <i class="fa-solid fa-music mr-2 text-blue-400"></i>WebSampler
+            </h1>
+            <div class="h-6 w-px bg-gray-600 mx-2"></div>
+            
+            <!-- Mode Switcher -->
+            <div class="flex bg-gray-700 rounded-lg p-1">
+                <button id="mode-edit" class="mode-btn active px-4 py-1.5 rounded-md text-sm font-medium transition-colors">
+                    <i class="fa-solid fa-sliders mr-2"></i>編集モード
+                </button>
+                <button id="mode-perform" class="mode-btn px-4 py-1.5 rounded-md text-sm font-medium transition-colors">
+                    <i class="fa-solid fa-layer-group mr-2"></i>演奏モード
+                </button>
+            </div>
+        </div>
+
+        <!-- Transport (Play/Stop/BPM) -->
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2 bg-gray-700 px-3 py-1.5 rounded-md">
+                <span class="text-xs text-gray-400 font-bold">BPM</span>
+                <input type="number" id="bpm-input" value="120" min="40" max="300" class="w-12 bg-transparent text-center focus:outline-none text-sm font-mono">
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button id="btn-play" class="w-10 h-10 rounded-full bg-green-600 hover:bg-green-500 text-white flex items-center justify-center transition-all shadow-lg hover:shadow-green-500/30">
+                    <i class="fa-solid fa-play"></i>
+                </button>
+                <button id="btn-stop" class="w-10 h-10 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center transition-all">
+                    <i class="fa-solid fa-stop"></i>
+                </button>
+            </div>
+            
+            <button id="btn-clear" class="text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded transition-colors">
+                <i class="fa-solid fa-trash mr-1"></i>All Clear
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Loading Overlay for Audio Context Start -->
+        <div id="start-overlay" class="absolute inset-0 bg-gray-900/90 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
+            <div class="text-center max-w-md p-6">
+                <h2 class="text-2xl font-bold mb-4">Web Samplerへようこそ</h2>
+                <p class="text-gray-400 mb-8">ブラウザの制限により、音声再生を開始するにはクリックが必要です。</p>
+                <button id="btn-start-audio" class="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-600/30 transition-all transform hover:scale-105">
+                    <i class="fa-solid fa-power-off mr-2"></i>システム起動
+                </button>
+            </div>
+        </div>
+
+        <!-- Edit Mode View -->
+        <div id="view-edit" class="w-full h-full flex flex-col md:flex-row p-4 gap-4 transition-all duration-300 overflow-y-auto md:overflow-hidden">
+            <!-- Sample List (Left Sidebar) -->
+            <div class="w-full md:w-64 h-48 md:h-auto flex-shrink-0 flex flex-col gap-2 bg-gray-800 rounded-xl p-3 border border-gray-700 overflow-y-auto">
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">Samples</h3>
+                <!-- Sample Slots Generated by JS -->
+                <div id="sample-slots-container" class="flex flex-col gap-2">
+                    <!-- Sample Item Template -->
+                    <!-- <div class="sample-slot p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 border-l-4 border-blue-500">
+                        <div class="font-medium truncate">Kick Drum.wav</div>
+                        <div class="text-xs text-gray-400">Slot 1</div>
+                    </div> -->
+                </div>
+                <button id="btn-add-sample" class="mt-2 py-2 border-2 border-dashed border-gray-600 text-gray-500 rounded-lg hover:border-gray-500 hover:text-gray-400 transition-colors text-sm flex items-center justify-center">
+                    <i class="fa-solid fa-plus mr-2"></i>スロット追加
+                </button>
+            </div>
+
+            <!-- Editor Area -->
+            <div class="flex-1 bg-gray-800 rounded-xl p-6 border border-gray-700 flex flex-col relative overflow-hidden">
+                <div id="empty-state" class="absolute inset-0 flex items-center justify-center text-gray-500 flex-col p-4 text-center">
+                    <i class="fa-solid fa-wave-square text-4xl mb-4 opacity-30"></i>
+                    <p class="mb-4">左側のスロットを選択するか、<br>新しいサンプルを追加してください</p>
+                    <button id="btn-load-empty" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors shadow-lg">
+                        <i class="fa-solid fa-upload mr-2"></i>ファイルを読み込む
+                    </button>
+                </div>
+
+                <div id="editor-controls" class="hidden h-full flex flex-col">
+                    <!-- Sample Info & Actions -->
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <h2 id="current-sample-name" class="text-2xl font-bold text-white mb-1">Kick Drum.wav</h2>
+                            <span class="text-xs px-2 py-1 bg-blue-900 text-blue-300 rounded" id="current-slot-badge">SLOT 1</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <label class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded cursor-pointer transition-colors text-sm">
+                                <i class="fa-solid fa-upload mr-2"></i>ファイル読込
+                                <input type="file" id="file-input" accept="audio/*" class="hidden">
+                            </label>
+                            <button id="btn-preview" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors text-sm">
+                                <i class="fa-solid fa-play mr-2"></i>試聴
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Waveform Visualizer -->
+                    <div class="h-48 bg-gray-900 rounded-lg border border-gray-700 mb-6 relative overflow-hidden group">
+                        <canvas id="waveform-canvas" class="w-full h-full"></canvas>
+                        <!-- Trim Handles (Visual Representation) -->
+                        <div id="trim-region" class="absolute top-0 bottom-0 bg-blue-500/20 border-x border-blue-400 pointer-events-none" style="left: 0%; right: 0%;"></div>
+                    </div>
+
+                    <!-- Parameters Grid -->
+                    <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 overflow-y-auto pb-4">
+                        <!-- Volume -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">Volume</label>
+                                <span id="val-volume" class="text-xs font-mono text-blue-400">0 dB</span>
+                            </div>
+                            <input type="range" id="param-volume" min="-60" max="6" value="0" step="0.5">
+                        </div>
+
+                        <!-- Playback Rate (Pitch/Speed) -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">Playback Rate</label>
+                                <span id="val-rate" class="text-xs font-mono text-blue-400">1.0x</span>
+                            </div>
+                            <input type="range" id="param-rate" min="0.1" max="4.0" value="1.0" step="0.1">
+                        </div>
+
+                        <!-- Trim Start -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">Start Offset</label>
+                                <span id="val-start" class="text-xs font-mono text-blue-400">0s</span>
+                            </div>
+                            <input type="range" id="param-start" min="0" max="1" value="0" step="0.01">
+                        </div>
+                        
+                        <!-- Trim End -->
+                        <div class="bg-gray-700/50 p-4 rounded-lg">
+                            <div class="flex justify-between mb-2">
+                                <label class="text-sm font-medium text-gray-300">End Point</label>
+                                <span id="val-end" class="text-xs font-mono text-blue-400">End</span>
+                            </div>
+                            <input type="range" id="param-end" min="0" max="1" value="1" step="0.01">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sequencer Mode View -->
+        <div id="view-perform" class="w-full h-full hidden p-4 flex-col gap-4">
+            
+            <!-- Toolbar -->
+            <div class="flex justify-between items-center bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <div class="flex gap-2 text-sm">
+                    <button id="add-track-btn" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-200">
+                        <i class="fa-solid fa-plus mr-1"></i>トラック追加
+                    </button>
+                    <div class="w-px h-6 bg-gray-600 mx-2"></div>
+                    <span class="text-gray-400 self-center">左クリック: ノート配置 / 右クリック: ノート削除</span>
+                </div>
+            </div>
+
+            <!-- Sequencer Grid Container -->
+            <div class="flex-1 bg-gray-800 rounded-xl border border-gray-700 overflow-hidden flex flex-col">
+                <!-- Timeline Header -->
+                <div class="h-8 bg-gray-900 border-b border-gray-700 flex">
+                    <div class="w-32 flex-shrink-0 border-r border-gray-700 bg-gray-800 z-10"></div> <!-- Track Names Header -->
+                    <div id="timeline-header" class="flex-1 flex overflow-hidden">
+                        <!-- Step Markers generated by JS -->
+                    </div>
+                </div>
+                
+                <!-- Tracks Area -->
+                <div id="sequencer-tracks" class="flex-1 overflow-y-auto overflow-x-hidden relative">
+                    <!-- Tracks generated by JS -->
+                    <div class="flex items-center justify-center h-full text-gray-500">
+                        <p>トラックがありません。編集モードでサンプルを追加してください。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- JS Scripts -->
+    <script>
+        // --- Audio Engine ---
+        class AudioEngine {
+            constructor() {
+                this.samples = new Map(); // id -> { player: Tone.Player, buffer: Tone.ToneAudioBuffer, params: Object }
+                this.nextId = 1;
+                this.isInitialized = false;
+                
+                // Master Output with a Limiter to prevent clipping
+                this.limiter = new Tone.Limiter(-1).toDestination();
+                this.masterVolume = new Tone.Volume(0).connect(this.limiter);
+            }
+
+            async init() {
+                if (!this.isInitialized) {
+                    await Tone.start();
+                    console.log("Audio Context Started");
+                    this.isInitialized = true;
+                }
+            }
+
+            // Add a new sample from a File object
+            async addSample(file) {
+                return new Promise((resolve, reject) => {
+                    const url = URL.createObjectURL(file);
+                    const buffer = new Tone.ToneAudioBuffer(url, () => {
+                        const id = `slot-${this.nextId++}`;
+                        
+                        const player = new Tone.Player(buffer).connect(this.masterVolume);
+                        
+                        // Default params
+                        const params = {
+                            name: file.name,
+                            volume: 0,
+                            playbackRate: 1,
+                            startOffset: 0, // 0 to 1 (normalized)
+                            endPoint: 1,    // 0 to 1 (normalized)
+                            duration: buffer.duration
+                        };
+
+                        this.samples.set(id, { player, buffer, params });
+                        console.log(`Sample loaded: ${id}`);
+                        resolve(id);
+                    }, (err) => {
+                        console.error("Error loading sample", err);
+                        reject(err);
+                    });
+                });
+            }
+
+            // Add an empty slot (placeholder)
+            addEmptySlot() {
+                const id = `slot-${this.nextId++}`;
+                this.samples.set(id, { 
+                    player: null, 
+                    buffer: null, 
+                    params: { name: "Empty Slot", volume: 0, playbackRate: 1, startOffset: 0, endPoint: 1, duration: 0 } 
+                });
+                return id;
+            }
+
+            getSample(id) {
+                return this.samples.get(id);
+            }
+
+            getAllSamples() {
+                return Array.from(this.samples.entries()).map(([id, data]) => ({
+                    id,
+                    name: data.params.name,
+                    hasAudio: !!data.player
+                }));
+            }
+
+            // Play a sample immediately (preview)
+            play(id) {
+                const sample = this.samples.get(id);
+                if (sample && sample.player) {
+                    // Stop if already playing to allow re-trigger
+                    sample.player.stop();
+                    
+                    const duration = sample.buffer.duration;
+                    const startTime = sample.params.startOffset * duration;
+                    let playDuration = (sample.params.endPoint * duration) - startTime;
+                    
+                    if (playDuration <= 0) playDuration = 0.1; // Minimal duration safety
+
+                    sample.player.start(Tone.now(), startTime, playDuration);
+                }
+            }
+
+            // Play a sample at a specific time (for sequencer)
+            playScheduled(id, time, pitchShift = 0) {
+                const sample = this.samples.get(id);
+                if (sample && sample.player) {
+                    const duration = sample.buffer.duration;
+                    const startTime = sample.params.startOffset * duration;
+                    let playDuration = (sample.params.endPoint * duration) - startTime;
+                    
+                    if (playDuration <= 0) playDuration = 0.1;
+
+                    // Apply pitch shift by modifying playbackRate temporarily
+                    // We assume standard playbackRate is the base. 
+                    // 1 semitone = 2^(1/12) approx 1.05946
+                    const originalRate = sample.params.playbackRate;
+                    if (pitchShift !== 0) {
+                        const rateFactor = Math.pow(2, pitchShift / 12);
+                        sample.player.playbackRate = originalRate * rateFactor;
+                    } else {
+                        sample.player.playbackRate = originalRate;
+                    }
+
+                    sample.player.start(time, startTime, playDuration);
+                    
+                    // Reset rate after trigger (optional, depending on polyphony needs)
+                    // Tone.Player is monophonic by default unless re-triggered. 
+                    // For polyphony we might need Tone.Sampler or creating new sources, 
+                    // but for a simple drum machine/sampler, retriggering the single player is often okay 
+                    // or we accept that one slot = one voice.
+                }
+            }
+
+            updateParam(id, key, value) {
+                const sample = this.samples.get(id);
+                if (!sample) return;
+
+                // Update stored params
+                sample.params[key] = value;
+
+                // Apply realtime updates to player
+                if (sample.player) {
+                    if (key === 'volume') {
+                        sample.player.volume.value = value;
+                    } else if (key === 'playbackRate') {
+                        sample.player.playbackRate = value;
+                    }
+                }
+            }
+
+            // Extract waveform data for visualization
+            getWaveformData(id, samples = 100) {
+                const sample = this.samples.get(id);
+                if (!sample || !sample.buffer) return null;
+
+                const channelData = sample.buffer.getChannelData(0); // Left channel
+                const blockSize = Math.floor(channelData.length / samples);
+                const data = [];
+
+                for (let i = 0; i < samples; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < blockSize; j++) {
+                        sum += Math.abs(channelData[i * blockSize + j]);
+                    }
+                    data.push(sum / blockSize);
+                }
+                return data;
+            }
+        }
+
+        // --- Sequencer ---
+        class Sequencer {
+            constructor(audioEngine, updateUiCallback) {
+                this.audioEngine = audioEngine;
+                this.updateUiCallback = updateUiCallback;
+                
+                this.tracks = []; // Array of { sampleId: string, steps: Object }
+                this.stepsCount = 16; // Standard 16-step sequencer
+                this.currentStep = 0;
+                this.isPlaying = false;
+                
+                // Tone.js Transport setup
+                this.eventId = null;
+            }
+
+            init() {
+                Tone.Transport.bpm.value = 120;
+                
+                // Schedule the loop
+                this.eventId = Tone.Transport.scheduleRepeat((time) => {
+                    this.step(time);
+                }, "16n");
+            }
+
+            // Add a track linked to a sample
+            addTrack(sampleId) {
+                this.tracks.push({
+                    sampleId: sampleId,
+                    steps: {} // key: stepIndex (0-15), value: { pitch: 0, velocity: 1 }
+                });
+                return this.tracks.length - 1; // Return track index
+            }
+            
+            // Remove a track
+            removeTrack(index) {
+                if (index >= 0 && index < this.tracks.length) {
+                    this.tracks.splice(index, 1);
+                }
+            }
+
+            getTrack(index) {
+                return this.tracks[index];
+            }
+
+            // Toggle a step on/off
+            toggleStep(trackIndex, stepIndex) {
+                const track = this.tracks[trackIndex];
+                if (!track) return;
+
+                if (track.steps[stepIndex]) {
+                    delete track.steps[stepIndex];
+                } else {
+                    track.steps[stepIndex] = { pitch: 0, velocity: 1 };
+                }
+            }
+
+            // Set step pitch
+            setStepPitch(trackIndex, stepIndex, pitch) {
+                const track = this.tracks[trackIndex];
+                if (track && track.steps[stepIndex]) {
+                    track.steps[stepIndex].pitch = pitch;
+                }
+            }
+
+            // The main loop function called by Tone.Transport
+            step(time) {
+                // Draw step on UI (using Draw for syncing with visual frame)
+                Tone.Draw.schedule(() => {
+                    if (this.updateUiCallback) {
+                        this.updateUiCallback(this.currentStep);
+                    }
+                }, time);
+
+                // Trigger sounds for current step
+                this.tracks.forEach(track => {
+                    const stepData = track.steps[this.currentStep];
+                    if (stepData) {
+                        this.audioEngine.playScheduled(track.sampleId, time, stepData.pitch);
+                    }
+                });
+
+                // Advance step
+                this.currentStep = (this.currentStep + 1) % this.stepsCount;
+            }
+
+            start() {
+                if (Tone.context.state !== 'running') {
+                    Tone.context.resume();
+                }
+                this.currentStep = 0;
+                Tone.Transport.start();
+                this.isPlaying = true;
+            }
+
+            stop() {
+                Tone.Transport.stop();
+                this.currentStep = 0;
+                this.isPlaying = false;
+                
+                // Reset UI immediately
+                if (this.updateUiCallback) {
+                    this.updateUiCallback(-1); // -1 indicates stopped/reset
+                }
+            }
+
+            setBpm(bpm) {
+                Tone.Transport.bpm.value = bpm;
+            }
+
+            clearAll() {
+                this.tracks.forEach(track => {
+                    track.steps = {};
+                });
+            }
+        }
+
+        // --- UI Manager ---
+        class UIManager {
+            constructor(audioEngine, sequencer) {
+                this.audioEngine = audioEngine;
+                this.sequencer = sequencer;
+                
+                // Element References
+                this.elements = {
+                    sampleSlotsContainer: document.getElementById('sample-slots-container'),
+                    editorControls: document.getElementById('editor-controls'),
+                    emptyState: document.getElementById('empty-state'),
+                    currentSampleName: document.getElementById('current-sample-name'),
+                    currentSlotBadge: document.getElementById('current-slot-badge'),
+                    waveformCanvas: document.getElementById('waveform-canvas'),
+                    sequencerTracks: document.getElementById('sequencer-tracks'),
+                    timelineHeader: document.getElementById('timeline-header'),
+                    
+                    // Inputs
+                    inputVolume: document.getElementById('param-volume'),
+                    inputRate: document.getElementById('param-rate'),
+                    inputStart: document.getElementById('param-start'),
+                    inputEnd: document.getElementById('param-end'),
+                    
+                    // Value Displays
+                    valVolume: document.getElementById('val-volume'),
+                    valRate: document.getElementById('val-rate'),
+                    valStart: document.getElementById('val-start'),
+                    valEnd: document.getElementById('val-end'),
+                };
+
+                this.selectedSlotId = null;
+                this.selectedStep = null; // { trackIndex, stepIndex }
+            }
+
+            // --- Sample List & Editor ---
+
+            renderSampleList() {
+                const container = this.elements.sampleSlotsContainer;
+                container.innerHTML = '';
+
+                const samples = this.audioEngine.getAllSamples();
+                
+                samples.forEach((sample, index) => {
+                    const el = document.createElement('div');
+                    el.className = `p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 border-l-4 transition-all mb-2 ${
+                        this.selectedSlotId === sample.id ? 'border-blue-500 bg-gray-600' : 'border-transparent'
+                    }`;
+                    el.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div class="font-medium truncate text-sm text-gray-200">${sample.name}</div>
+                            ${sample.hasAudio ? '<i class="fa-solid fa-wave-square text-xs text-blue-400"></i>' : '<i class="fa-solid fa-ban text-xs text-gray-500"></i>'}
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">Slot ${index + 1}</div>
+                    `;
+                    
+                    el.onclick = () => this.selectSlot(sample.id);
+                    container.appendChild(el);
+                });
+            }
+
+            selectSlot(id) {
+                this.selectedSlotId = id;
+                this.renderSampleList();
+                
+                const sample = this.audioEngine.getSample(id);
+                if (sample && sample.player) {
+                    this.elements.emptyState.classList.add('hidden');
+                    this.elements.editorControls.classList.remove('hidden');
+                    this.updateEditorValues(sample);
+                    this.drawWaveform(id);
+                } else {
+                    this.elements.emptyState.classList.remove('hidden');
+                    this.elements.editorControls.classList.add('hidden');
+                }
+            }
+
+            updateEditorValues(sample) {
+                const p = sample.params;
+                const e = this.elements;
+
+                e.currentSampleName.textContent = p.name;
+                e.currentSlotBadge.textContent = sample.id.toUpperCase();
+
+                e.inputVolume.value = p.volume;
+                e.valVolume.textContent = `${p.volume > 0 ? '+' : ''}${p.volume} dB`;
+
+                e.inputRate.value = p.playbackRate;
+                e.valRate.textContent = `${p.playbackRate.toFixed(1)}x`;
+
+                e.inputStart.value = p.startOffset;
+                e.valStart.textContent = `${(p.startOffset * p.duration).toFixed(2)}s`;
+
+                e.inputEnd.value = p.endPoint;
+                e.valEnd.textContent = `${(p.endPoint * p.duration).toFixed(2)}s`;
+            }
+
+            drawWaveform(id) {
+                const canvas = this.elements.waveformCanvas;
+                const ctx = canvas.getContext('2d');
+                const width = canvas.width = canvas.offsetWidth;
+                const height = canvas.height = canvas.offsetHeight;
+
+                // Clear
+                ctx.fillStyle = '#111827'; // gray-900
+                ctx.fillRect(0, 0, width, height);
+
+                const data = this.audioEngine.getWaveformData(id, width);
+                if (!data) return;
+
+                // Draw Wave
+                ctx.beginPath();
+                ctx.strokeStyle = '#60a5fa'; // blue-400
+                ctx.lineWidth = 2;
+                
+                const middle = height / 2;
+                const scale = height / 2;
+
+                for (let i = 0; i < data.length; i++) {
+                    const x = i;
+                    const y = data[i] * scale;
+                    ctx.moveTo(x, middle - y);
+                    ctx.lineTo(x, middle + y);
+                }
+                ctx.stroke();
+
+                // Draw Trim Region Overlay
+                const sample = this.audioEngine.getSample(id);
+                if (sample) {
+                    const startX = sample.params.startOffset * width;
+                    const endX = sample.params.endPoint * width;
+
+                    // Darken outside regions
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    // Left side
+                    ctx.fillRect(0, 0, startX, height);
+                    // Right side
+                    ctx.fillRect(endX, 0, width - endX, height);
+
+                    // Lines
+                    ctx.fillStyle = '#3b82f6'; // blue-500
+                    ctx.fillRect(startX, 0, 2, height);
+                    ctx.fillRect(endX - 2, 0, 2, height);
+                }
+            }
+
+            // --- Sequencer ---
+
+            renderSequencer() {
+                const tracksContainer = this.elements.sequencerTracks;
+                const headerContainer = this.elements.timelineHeader;
+                
+                tracksContainer.innerHTML = '';
+                headerContainer.innerHTML = '';
+
+                if (this.sequencer.tracks.length === 0) {
+                    tracksContainer.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-gray-500 opacity-50">
+                            <i class="fa-solid fa-music text-3xl mb-2"></i>
+                            <p>トラックを追加してください</p>
+                        </div>`;
+                    return;
+                }
+
+                // Render Header Steps
+                for (let i = 0; i < this.sequencer.stepsCount; i++) {
+                    const marker = document.createElement('div');
+                    marker.className = `flex-1 border-r border-gray-700 flex items-center justify-center text-xs text-gray-500 ${i % 4 === 0 ? 'bg-gray-800 font-bold text-gray-300' : ''}`;
+                    marker.textContent = i + 1;
+                    marker.id = `header-step-${i}`;
+                    headerContainer.appendChild(marker);
+                }
+
+                // Render Tracks
+                this.sequencer.tracks.forEach((track, trackIndex) => {
+                    const sample = this.audioEngine.getSample(track.sampleId);
+                    const row = document.createElement('div');
+                    row.className = 'flex h-16 border-b border-gray-700 bg-gray-800';
+
+                    // Track Label
+                    const label = document.createElement('div');
+                    label.className = 'w-24 md:w-32 flex-shrink-0 bg-gray-800 border-r border-gray-700 p-2 flex flex-col justify-center relative z-10';
+                    label.innerHTML = `
+                        <div class="font-bold text-xs md:text-sm text-gray-300 truncate">${sample ? sample.params.name : 'Unknown'}</div>
+                        <div class="flex justify-between mt-1">
+                            <button class="text-xs text-red-400 hover:text-red-300" onclick="window.app.removeTrack(${trackIndex})">
+                                <i class="fa-solid fa-xmark"></i> <span class="hidden md:inline">削除</span>
+                            </button>
+                            <div class="text-xs text-blue-500 font-mono">TRK ${trackIndex + 1}</div>
+                        </div>
+                    `;
+                    row.appendChild(label);
+
+                    // Steps Area
+                    const stepsContainer = document.createElement('div');
+                    stepsContainer.className = 'flex-1 flex';
+                    
+                    for (let i = 0; i < this.sequencer.stepsCount; i++) {
+                        const stepBtn = document.createElement('div');
+                        const isActive = !!track.steps[i];
+                        const isBeat = i % 4 === 0;
+                        
+                        stepBtn.className = `flex-1 border-r border-gray-700 cursor-pointer transition-all relative group
+                            ${isBeat ? 'bg-gray-750' : 'bg-transparent'}
+                            hover:bg-gray-700
+                        `;
+                        stepBtn.dataset.step = i;
+                        stepBtn.dataset.track = trackIndex;
+                        stepBtn.id = `step-${trackIndex}-${i}`;
+
+                        // Step Content (Active Note)
+                        if (isActive) {
+                            const pitch = track.steps[i].pitch;
+                            stepBtn.innerHTML = `
+                                <div class="absolute inset-1 bg-blue-500 rounded flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                    <span class="text-xs font-bold text-white">${pitch > 0 ? '+' + pitch : pitch}</span>
+                                </div>
+                            `;
+                        }
+
+                        // Interactions
+                        stepBtn.addEventListener('mousedown', (e) => {
+                            if (e.button === 0) { // Left Click
+                                if (e.shiftKey && isActive) {
+                                    // Shift + Click: Increase pitch
+                                    window.app.changeStepPitch(trackIndex, i, 1);
+                                } else if (e.ctrlKey && isActive) {
+                                    // Ctrl + Click: Decrease pitch
+                                    window.app.changeStepPitch(trackIndex, i, -1);
+                                } else {
+                                    // Toggle
+                                    window.app.toggleStep(trackIndex, i);
+                                }
+                            } else if (e.button === 2) { // Right Click
+                                e.preventDefault();
+                                // Open simple prompt for pitch? Or just delete?
+                                // For now: custom simple pitch cycle logic
+                                // Let's make Right Click cycle pitch: 0 -> 2 -> 4 -> 5 -> 7 -> 12 -> 0
+                                // window.app.cyclePitch(trackIndex, i);
+                            }
+                        });
+
+                        // Context menu for pitch (Standard Right Click prevention)
+                        stepBtn.addEventListener('contextmenu', (e) => {
+                            e.preventDefault();
+                            if (isActive) {
+                                 // Simple visual feedback could be added here
+                                 window.app.changeStepPitch(trackIndex, i, 1); // Simple increment on right click
+                            }
+                        });
+
+                        stepsContainer.appendChild(stepBtn);
+                    }
+                    row.appendChild(stepsContainer);
+                    tracksContainer.appendChild(row);
+                });
+            }
+
+            highlightStep(stepIndex) {
+                // Reset all headers
+                const headers = this.elements.timelineHeader.children;
+                for (let h of headers) {
+                    h.classList.remove('bg-blue-600', 'text-white');
+                    if ((parseInt(h.textContent) - 1) % 4 === 0) {
+                         h.classList.add('bg-gray-800');
+                    } else {
+                         h.classList.remove('bg-gray-800');
+                    }
+                }
+
+                // Reset all steps opacity/highlight
+                // (Optional: heavy DOM manipulation every 16th note might be slow on low-end devices, 
+                // but for < 10 tracks it's fine. CSS based animation is better but harder to sync)
+                
+                if (stepIndex !== -1) {
+                    // Highlight Header
+                    const activeHeader = document.getElementById(`header-step-${stepIndex}`);
+                    if (activeHeader) {
+                        activeHeader.classList.remove('bg-gray-800');
+                        activeHeader.classList.add('bg-blue-600', 'text-white');
+                    }
+
+                    // Highlight Grid Column (Visual overlay could be better, but let's just leave it to header for now to save perf)
+                }
+            }
+        }
+
+        // --- Main Application Logic ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize Subsystems
+            const audioEngine = new AudioEngine();
+            
+            // UI update callback for sequencer
+            const sequencer = new Sequencer(audioEngine, (stepIndex) => {
+                ui.highlightStep(stepIndex);
+            });
+            
+            const ui = new UIManager(audioEngine, sequencer);
+
+            // Global App Interface for Inline HTML Event Handlers
+            window.app = {
+                toggleStep: (t, s) => {
+                    sequencer.toggleStep(t, s);
+                    ui.renderSequencer();
+                },
+                changeStepPitch: (t, s, delta) => {
+                    const track = sequencer.getTrack(t);
+                    if (track && track.steps[s]) {
+                        let newPitch = track.steps[s].pitch + delta;
+                        // Clamp pitch mostly for sanity (-24 to +24 semitones)
+                        newPitch = Math.max(-24, Math.min(24, newPitch));
+                        sequencer.setStepPitch(t, s, newPitch);
+                        ui.renderSequencer();
+                    }
+                },
+                removeTrack: (t) => {
+                    if(confirm('このトラックを削除しますか？')) {
+                        sequencer.removeTrack(t);
+                        ui.renderSequencer();
+                    }
+                }
+            };
+
+            // --- Event Listeners ---
+
+            // 1. Audio Context Start (User Interaction Requirement)
+            const btnStartAudio = document.getElementById('btn-start-audio');
+            const startOverlay = document.getElementById('start-overlay');
+            
+            btnStartAudio.addEventListener('click', async () => {
+                await audioEngine.init();
+                sequencer.init();
+                startOverlay.classList.add('hidden');
+                
+                // Add one default slot
+                audioEngine.addEmptySlot();
+                ui.renderSampleList();
+                ui.selectSlot('slot-1');
+            });
+
+            // 2. Mode Switching
+            const btnModeEdit = document.getElementById('mode-edit');
+            const btnModePerform = document.getElementById('mode-perform');
+            const viewEdit = document.getElementById('view-edit');
+            const viewPerform = document.getElementById('view-perform');
+
+            function switchMode(mode) {
+                if (mode === 'edit') {
+                    btnModeEdit.classList.add('active');
+                    btnModePerform.classList.remove('active');
+                    viewEdit.classList.remove('hidden');
+                    viewEdit.classList.add('flex'); // Restore flex
+                    viewPerform.classList.add('hidden');
+                    viewPerform.classList.remove('flex');
+                    
+                    // Re-draw waveform just in case size changed
+                    if (ui.selectedSlotId) ui.drawWaveform(ui.selectedSlotId);
+
+                } else {
+                    btnModePerform.classList.add('active');
+                    btnModeEdit.classList.remove('active');
+                    viewPerform.classList.remove('hidden');
+                    viewPerform.classList.add('flex');
+                    viewEdit.classList.add('hidden');
+                    viewEdit.classList.remove('flex');
+                    
+                    ui.renderSequencer();
+                }
+            }
+
+            btnModeEdit.addEventListener('click', () => switchMode('edit'));
+            btnModePerform.addEventListener('click', () => switchMode('perform'));
+
+            // 3. Transport Controls
+            const btnPlay = document.getElementById('btn-play');
+            const btnStop = document.getElementById('btn-stop');
+            const btnClear = document.getElementById('btn-clear');
+            const inputBpm = document.getElementById('bpm-input');
+
+            btnPlay.addEventListener('click', () => {
+                if (!sequencer.isPlaying) {
+                    sequencer.start();
+                    btnPlay.innerHTML = '<i class="fa-solid fa-pause"></i>';
+                    btnPlay.classList.add('bg-yellow-600', 'hover:bg-yellow-500');
+                    btnPlay.classList.remove('bg-green-600', 'hover:bg-green-500');
+                } else {
+                    // Pause behavior (actually stop transport but keep position logic if needed, but here simple toggle)
+                    sequencer.stop();
+                    btnPlay.innerHTML = '<i class="fa-solid fa-play"></i>';
+                    btnPlay.classList.remove('bg-yellow-600', 'hover:bg-yellow-500');
+                    btnPlay.classList.add('bg-green-600', 'hover:bg-green-500');
+                }
+            });
+
+            btnStop.addEventListener('click', () => {
+                sequencer.stop();
+                btnPlay.innerHTML = '<i class="fa-solid fa-play"></i>';
+                btnPlay.classList.remove('bg-yellow-600', 'hover:bg-yellow-500');
+                btnPlay.classList.add('bg-green-600', 'hover:bg-green-500');
+            });
+
+            btnClear.addEventListener('click', () => {
+                if(confirm('すべてのシーケンスデータを消去しますか？')) {
+                    sequencer.clearAll();
+                    ui.renderSequencer();
+                }
+            });
+
+            inputBpm.addEventListener('change', (e) => {
+                let val = parseInt(e.target.value);
+                if (val < 40) val = 40;
+                if (val > 300) val = 300;
+                e.target.value = val;
+                sequencer.setBpm(val);
+            });
+
+            // 4. Sample Management
+            const btnAddSample = document.getElementById('btn-add-sample');
+            const btnLoadEmpty = document.getElementById('btn-load-empty');
+            
+            // Empty state load button
+            btnLoadEmpty.addEventListener('click', () => {
+                if (ui.selectedSlotId) {
+                    fileInput.click();
+                } else {
+                    // If no slot selected (rare case in empty state logic but possible), add one then click
+                    const id = audioEngine.addEmptySlot();
+                    ui.renderSampleList();
+                    ui.selectSlot(id);
+                    // Wait for UI update
+                    setTimeout(() => fileInput.click(), 50);
+                }
+            });
+
+            btnAddSample.addEventListener('click', () => {
+                const id = audioEngine.addEmptySlot();
+                ui.renderSampleList();
+                ui.selectSlot(id);
+            });
+
+            const fileInput = document.getElementById('file-input');
+            fileInput.addEventListener('change', async (e) => {
+                if (e.target.files.length > 0 && ui.selectedSlotId) {
+                    const file = e.target.files[0];
+                    
+                    try {
+                        const url = URL.createObjectURL(file);
+                        const buffer = new Tone.ToneAudioBuffer(url, () => {
+                            const sample = audioEngine.getSample(ui.selectedSlotId);
+                            if (sample) {
+                                sample.player = new Tone.Player(buffer).connect(audioEngine.masterVolume);
+                                sample.buffer = buffer;
+                                sample.params.name = file.name;
+                                sample.params.duration = buffer.duration;
+                                
+                                // Reset params
+                                sample.params.startOffset = 0;
+                                sample.params.endPoint = 1;
+                                
+                                console.log(`Loaded ${file.name} into ${ui.selectedSlotId}`);
+                                ui.updateEditorValues(sample);
+                                ui.renderSampleList();
+                                ui.drawWaveform(ui.selectedSlotId);
+                            }
+                        });
+                        
+                    } catch (err) {
+                        console.error(err);
+                        alert('読み込みに失敗しました');
+                    }
+                }
+                // Reset input
+                fileInput.value = '';
+            });
+
+            const btnPreview = document.getElementById('btn-preview');
+            btnPreview.addEventListener('click', () => {
+                if (ui.selectedSlotId) {
+                    audioEngine.play(ui.selectedSlotId);
+                }
+            });
+
+            // 5. Editor Parameter Controls
+            const bindParam = (input, key) => {
+                input.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    if (ui.selectedSlotId) {
+                        audioEngine.updateParam(ui.selectedSlotId, key, val);
+                        
+                        // Update UI text immediately
+                        const sample = audioEngine.getSample(ui.selectedSlotId);
+                        ui.updateEditorValues(sample);
+                        
+                        // Redraw for trim params
+                        if (key === 'startOffset' || key === 'endPoint') {
+                            ui.drawWaveform(ui.selectedSlotId);
+                        }
+                    }
+                });
+            };
+
+            bindParam(document.getElementById('param-volume'), 'volume');
+            bindParam(document.getElementById('param-rate'), 'playbackRate');
+            bindParam(document.getElementById('param-start'), 'startOffset');
+            bindParam(document.getElementById('param-end'), 'endPoint');
+
+            // 6. Add Track (Performance Mode)
+            const btnAddTrack = document.getElementById('add-track-btn');
+            btnAddTrack.addEventListener('click', () => {
+                // Show a simple modal or prompt to choose which sample to add
+                // For simplicity, let's just add the currently selected sample from Edit mode
+                // Or if none selected, prompt user.
+                
+                // Better UX: Dropdown? 
+                // Let's just default to "Last Selected" or "Slot 1".
+                
+                const samples = audioEngine.getAllSamples();
+                const validSamples = samples.filter(s => s.hasAudio);
+                
+                if (validSamples.length === 0) {
+                    alert('有効なサンプルがありません。編集モードで音声ファイルを読み込んでください。');
+                    return;
+                }
+                
+                // Simple selection logic: if a slot is selected and has audio, use it.
+                // Otherwise use the first valid one.
+                let targetId = ui.selectedSlotId;
+                const selectedSample = audioEngine.getSample(targetId);
+                
+                if (!selectedSample || !selectedSample.player) {
+                    targetId = validSamples[0].id;
+                }
+                
+                sequencer.addTrack(targetId);
+                ui.renderSequencer();
+            });
+
+        });
+    </script>
+</body>
+</html>
